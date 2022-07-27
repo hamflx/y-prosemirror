@@ -72,15 +72,16 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
     }
   },
   view: view => {
-    const ystate = ySyncPluginKey.getState(view.state)
     const undoManager = yUndoPluginKey.getState(view.state).undoManager
     undoManager.on('stack-item-added', ({ stackItem }) => {
+      const ystate = ySyncPluginKey.getState(view.state)
       const binding = ystate.binding
       if (binding) {
-        stackItem.meta.set(binding, yUndoPluginKey.getState(view.state).prevSel)
+        stackItem.meta.set(binding, binding.beforePatchSelection)
       }
     })
-    undoManager.on('stack-item-popped', ({ stackItem }) => {
+    undoManager.on('stack-item-pop', ({ stackItem }) => {
+      const ystate = ySyncPluginKey.getState(view.state)
       const binding = ystate.binding
       if (binding) {
         binding.beforeTransactionSelection = stackItem.meta.get(binding) || binding.beforeTransactionSelection

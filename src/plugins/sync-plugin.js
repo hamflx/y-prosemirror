@@ -230,6 +230,11 @@ export class ProsemirrorBinding {
     // @ts-ignore
     this.doc = yXmlFragment.doc
     /**
+     * last selection as relative positions in the Yjs model
+     */
+    this.beforePatchSelection = null
+    this.lastProsemirrorState = prosemirrorView.state
+    /**
      * current selection as relative positions in the Yjs model
      */
     this.beforeTransactionSelection = null
@@ -405,6 +410,8 @@ export class ProsemirrorBinding {
   _prosemirrorChanged (doc) {
     this.mux(() => {
       this.doc.transact(tr => {
+        this.beforePatchSelection = getRelativeSelection(this, this.lastProsemirrorState)
+        this.lastProsemirrorState = this.prosemirrorView.state
         updateYFragment(this.doc, this.type, doc, this.mapping)
         this.beforeTransactionSelection = getRelativeSelection(this, this.prosemirrorView.state)
       }, ySyncPluginKey)
