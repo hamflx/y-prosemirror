@@ -35,7 +35,7 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
     init: (initargs, state) => {
       // TODO: check if plugin order matches and fix
       const ystate = ySyncPluginKey.getState(state)
-      const _undoManager = undoManager || new UndoManager(ystate.type, {
+      const _undoManager = undoManager || new UndoManagerDelayedDestroy(ystate.type, {
         trackedOrigins: new Set([ySyncPluginKey].concat(trackedOrigins)),
         deleteFilter: (item) => defaultDeleteFilter(item, protectedNodes),
         captureTransaction: tr => tr.meta.get('addToHistory') !== false
@@ -74,6 +74,9 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
   view: view => {
     const ystate = ySyncPluginKey.getState(view.state)
     const undoManager = yUndoPluginKey.getState(view.state).undoManager
+    if (typeof undoManager.preventDestroy === 'function') {
+      undoManager.preventDestroy()
+    }
     undoManager.on('stack-item-added', ({ stackItem }) => {
       const binding = ystate.binding
       if (binding) {
@@ -88,8 +91,28 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
     })
     return {
       destroy: () => {
-        undoManager.destroy()
+        if (typeof undoManager.delayedDestroy === 'function') {
+          undoManager.delayedDestroy()
+        }
       }
     }
   }
 })
+
+class UndoManagerDelayedDestroy extends UndoManager {
+  constructor (type, opts) {
+    super(type, opts)
+    this.destroyCounter = 0
+  }
+
+  preventDestroy () {
+    this.destroyCounter++
+  }
+
+  delayedDestroy () {
+    const memorizedCounter = this.destroyCounter
+    queue(() => this.destroyCounter === memorizedCounter && super.destroy())
+  }
+}
+
+const queue = fn => Promise.resolve().then(fn)
