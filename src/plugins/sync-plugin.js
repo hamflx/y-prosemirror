@@ -224,26 +224,13 @@ export const ySyncPlugin = (yXmlFragment, {
 
 /**
  * @param {any} tr
- * @param {any} relSel
+ * @param {RecoverableSelection} recoverableSel
  * @param {ProsemirrorBinding} binding
  */
-const restoreRelativeSelection = (tr, relSel, binding) => {
-  if (relSel !== null && relSel.anchor !== null && relSel.head !== null) {
-    const anchor = relativePositionToAbsolutePosition(
-      binding.doc,
-      binding.type,
-      relSel.anchor,
-      binding.mapping
-    )
-    const head = relativePositionToAbsolutePosition(
-      binding.doc,
-      binding.type,
-      relSel.head,
-      binding.mapping
-    )
-    if (anchor !== null && head !== null) {
-      tr = tr.setSelection(TextSelection.create(tr.doc, anchor, head))
-    }
+const restoreRelativeSelection = (tr, recoverableSel, binding) => {
+  if (recoverableSel !== null && recoverableSel.valid()) {
+    const selection = recoverableSel.restore(binding, tr.doc)
+    tr = tr.setSelection(selection)
   }
 }
 
@@ -259,6 +246,63 @@ export const getRelativeSelection = (pmbinding, state) => ({
     pmbinding.mapping
   )
 })
+
+export const createRecoverableSelection = (pmbinding, state) => {
+  const sel = new RecoverableSelection(pmbinding, state.selection)
+  state.selection.map(state.doc, sel)
+  return sel
+}
+
+export class RecoverableSelection {
+  constructor(pmbinding, selection, recoverMode = false) {
+    this.records = []
+    this.pmbinding = pmbinding
+    this.selection = selection
+    this.recoverMode = recoverMode
+  }
+
+  restore(pmbinding, doc) {
+    return this.selection.map(doc, new RecoveryMapping(pmbinding, this.records))
+  }
+
+  valid() {
+    return !!this.records.length && this.records.every(r => r.relPos)
+  }
+
+  map(pos) {
+    const relPos = absolutePositionToRelativePosition(pos, this.pmbinding.type, this.pmbinding.mapping)
+    this.records.push({ pos, relPos })
+    return pos
+  }
+
+  mapResult(pos) {
+    return { deleted: false, pos: this.map(pos) }
+  }
+}
+
+export class RecoveryMapping {
+  constructor(pmbinding, records) {
+    this.pmbinding = pmbinding
+    this.records = records
+  }
+
+  map(pos) {
+    return this.mapResult(pos).pos
+  }
+
+  mapResult(pos) {
+    for (const rec of this.records) {
+      if (rec.pos === pos) {
+        const mappedPos = relativePositionToAbsolutePosition(this.pmbinding.doc, this.pmbinding.type, rec.relPos, this.pmbinding.mapping)
+        if (mappedPos === null) {
+          return { deleted: true, pos }
+        }
+        return { deleted: false, pos: mappedPos }
+      }
+    }
+    throw new Error('not recorded')
+  }
+}
 
 /**
  * Binding for prosemirror.
@@ -291,7 +335,7 @@ export class ProsemirrorBinding {
     this.beforeTransactionSelection = null
     this.beforeAllTransactions = () => {
       if (this.beforeTransactionSelection === null) {
-        this.beforeTransactionSelection = getRelativeSelection(
+        this.beforeTransactionSelection = createRecoverableSelection(
           this,
           prosemirrorView.state
         )
@@ -542,7 +586,7 @@ export class ProsemirrorBinding {
   _prosemirrorChanged (doc) {
     this.doc.transact((tr) => {
       updateYFragment(this.doc, this.type, doc, this.mapping)
-      this.beforeTransactionSelection = getRelativeSelection(
+      this.beforeTransactionSelection = createRecoverableSelection(
         this,
         this.prosemirrorView.state
       )
