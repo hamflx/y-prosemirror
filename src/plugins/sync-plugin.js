@@ -254,11 +254,10 @@ export const createRecoverableSelection = (pmbinding, state) => {
 }
 
 export class RecoverableSelection {
-  constructor(pmbinding, selection, recoverMode = false) {
+  constructor(pmbinding, selection) {
     this.records = []
     this.pmbinding = pmbinding
     this.selection = selection
-    this.recoverMode = recoverMode
   }
 
   restore(pmbinding, doc) {
